@@ -1,72 +1,60 @@
+
+# %%
+# Cargue los datos de las tabla "files/input/drivers.csv" a una variable llamada
+# drivers, usando pandas 
 import pandas as pd
-import matplotlib.pyplot as plt
-import os
-
-# === Crear carpetas necesarias ===
-os.makedirs("files/output", exist_ok=True)
-os.makedirs("files/plots", exist_ok=True)
-
-# === 1. Leer las tablas base ===
-timesheet = pd.read_csv("files/input/timesheet.csv")
 drivers = pd.read_csv("files/input/drivers.csv")
 
-# Convertir columnas a numéricas
-timesheet["hours-logged"] = pd.to_numeric(timesheet["hours-logged"], errors="coerce")
-timesheet["miles-logged"] = pd.to_numeric(timesheet["miles-logged"], errors="coerce")
 
-# === 2. Crear "timesheet_with_means" ===
-mean_hours = timesheet.groupby("driverId")["hours-logged"].mean().reset_index()
-mean_hours.rename(columns={"hours-logged": "mean_hours-logged"}, inplace=True)
+# %%
+# Cargue los datos de las tabla "files/input/timesheet.csv" a una variable llamada
+# timesheet, usando pandas
+timesheet = pd.read_csv("files/input/timesheet.csv")
 
-timesheet_with_means = pd.merge(timesheet, mean_hours, on="driverId", how="left")
+# %%
+# Calcule el promedio de las columnas "hours-logged" y "miles-logged" en la 
+# tabla "timesheet", agrupando los resultados por cada conductor (driverId).
+avg_timesheet = timesheet.groupby("driverId")[["hours-logged", "miles-logged"]].mean().reset_index()
+avg_timesheet
 
-# === 3. Crear "timesheet_below" ===
-timesheet_below = timesheet_with_means[
-    timesheet_with_means["hours-logged"] < timesheet_with_means["mean_hours-logged"]
-]
+# %%
+# Cree una tabla llamada "timesheet_with_means" basada en la tabla "timesheet", 
+# agregando una columna con el promedio de "hours-logged" para cada conductor (driverId).
+timesheet_with_means = timesheet.merge(avg_timesheet[["driverId", "hours-logged"]], on="driverId", suffixes=("", "_mean"))
 
-# === 4. Crear "sum_timesheet" ===
-sum_timesheet = (
-    timesheet.groupby("driverId")[["hours-logged", "miles-logged"]]
-    .sum()
-    .reset_index()
-)
+# %%
+# Cree una tabla llamada "timesheet_below" a partir de "timesheet_with_means", filtrando los registros 
+# donde "hours-logged" sea menor que "mean_hours-logged".
+timesheet_below = timesheet_with_means[timesheet_with_means["hours-logged"] < timesheet_with_means["hours-logged_mean"]]
+timesheet_below
 
-# === 5. Crear "min_max_timesheet" ===
-min_max_timesheet = (
-    timesheet.groupby("driverId")["hours-logged"]
-    .agg(min_hours="min", max_hours="max")
-    .reset_index()
-)
 
-# === 6. Crear "summary" ===
-drivers_subset = drivers[["driverId", "name"]]
-summary = pd.merge(sum_timesheet, drivers_subset, on="driverId", how="left")
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-# === 7. Guardar "summary" como CSV ===
-summary.to_csv("files/output/summary.csv", index=False)
-print("✅ Archivo 'files/output/summary.csv' creado correctamente.")
+# Asegurar directorios de salida
+os.makedirs(os.path.join('files','output'), exist_ok=True)
+os.makedirs(os.path.join('files','plots'), exist_ok=True)
 
-# === 8. Crear "top10" ===
-top10 = (
-    summary.sort_values("miles-logged", ascending=False)
-    .head(10)
-    .reset_index(drop=True)
-)
+# Crear un resumen agregando promedios de horas y millas por driver
+summary = timesheet.groupby('driverId')[['hours-logged','miles-logged']].mean().reset_index()
+if 'name' in drivers.columns:
+	summary = summary.merge(drivers[['driverId','name']], on='driverId', how='left')
 
-# === 9. Gráfico de barras horizontales ===
-plt.figure(figsize=(8, 6))
-plt.barh(top10["name"], top10["miles-logged"])
-plt.xlabel("Millas registradas")
-plt.ylabel("Conductor")
-plt.title("Top 10 conductores con más millas registradas")
-plt.gca().invert_yaxis()
+# Guardar summary.csv en la ruta que espera la prueba (relative to repo root when tests run)
+summary_path = os.path.join('files','output','summary.csv')
+summary.to_csv(summary_path, index=False)
+
+# Preparar plot: top 10 drivers por miles-logged promedio
+top10 = summary.sort_values('miles-logged', ascending=False).head(10)
+plt.figure(figsize=(8,6))
+plt.bar(top10['driverId'].astype(str), top10['miles-logged'])
+plt.xlabel('driverId')
+plt.ylabel('avg miles-logged')
+plt.title('Top 10 drivers by avg miles')
 plt.tight_layout()
-
-# Guardar gráfico
-plot_path = "files/plots/top10_drivers.png"
+plot_path = os.path.join('files','plots','top10_drivers.png')
 plt.savefig(plot_path)
-plt.close()  # cerrar para liberar memoria
-
-# === 10. Verificar que el archivo existe ===
-print(f"✅ Gráfico guardado correctamente en: {plot_path}")
+plt.close()
